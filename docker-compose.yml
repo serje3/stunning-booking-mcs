@@ -8,6 +8,7 @@ services:
       - "8000:8000"
     environment:
       - AUTH_DATABASE_URL=postgresql://auth_user:auth_password@auth_db/auth_database
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     volumes:
       - ./auth:/app
     depends_on:
