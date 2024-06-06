@@ -1,17 +1,31 @@
 import asyncio
 from datetime import timedelta
-
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-
 from . import models, schemas, crud, utils, kafka
 from .config import ACCESS_TOKEN_EXPIRE_MINUTES
 from .database import engine, get_db
+from contextlib import asynccontextmanager
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    task = asyncio.create_task(kafka.consume_kafka_messages("user_events", "auth_service_group"))
+    print(task)
+    print('CREATING TASK')
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    print('DOWN')
+
+
+app = FastAPI(lifespan=lifespan)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -47,10 +61,3 @@ async def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     await kafka.send_kafka_message("user_events", message)
 
     return new_user
-
-
-# Пример фоновой задачи для обработки сообщений из Kafka
-@app.on_event("startup")
-async def startup_event():
-    loop = asyncio.get_event_loop()
-    await loop.create_task(kafka.consume_kafka_messages("user_events", "auth_service_group"))
